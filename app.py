@@ -33,7 +33,7 @@ def run_query(query, params=None):
 # Streamlit Page Configuration
 # -----------------------------------------------------
 st.set_page_config(
-    page_title="Customer–Product Data Integration System",
+    page_title="Customer Product Data Integration System",
     layout="wide"
 )
 
@@ -70,15 +70,26 @@ tabs = st.tabs([
 with tabs[0]:
     st.header("Submission Details")
 
-    st.write("""
-**University Name:** The Open University of Kenya  
-**Unit:** CSA 802 — Systems and Data Integration  
-**Student:** Gabriel Ndunda  
-**Registration Number:** ST62/80168/2024  
-            
-This application demonstrates the full implementation of Mini Project 1,  
-including data integration, SQL querying, schema design, and reporting.
-""")
+    details = {
+        "Field": [
+            "University Name",
+            "Unit",
+            "Student",
+            "Registration Number",
+            "Project Description"
+        ],
+        "Value": [
+            "The Open University of Kenya",
+            "CSA 802 — Systems and Data Integration",
+            "Gabriel Ndunda",
+            "ST62/80168/2024",
+            "Implementation of Mini Project 1 including data integration, SQL querying, schema design, reporting."
+        ]
+    }
+
+    df_details = pd.DataFrame(details)
+    st.table(df_details)
+
 
 
 # -----------------------------------------------------
