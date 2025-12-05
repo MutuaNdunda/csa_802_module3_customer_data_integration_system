@@ -16,17 +16,22 @@ if not SUPABASE_DB_URL:
     st.error("SUPABASE_DB_URL missing in .env file.")
     st.stop()
 
+
 # -----------------------------------------------------
-# Database Query Helper
+# Database Query Helper (Improved)
 # -----------------------------------------------------
 def run_query(query, params=None):
-    conn = psycopg2.connect(SUPABASE_DB_URL)
     try:
+        conn = psycopg2.connect(SUPABASE_DB_URL)
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(query, params)
             return pd.DataFrame(cur.fetchall())
+    except Exception as e:
+        st.error(f"Database error: {e}")
+        return pd.DataFrame()
     finally:
-        conn.close()
+        if "conn" in locals():
+            conn.close()
 
 
 # -----------------------------------------------------
@@ -39,6 +44,17 @@ st.set_page_config(
 
 st.title("Customer–Product Data Integration System")
 
+# 🔥 Enhancement Added: Integration Summary
+st.info("""
+### System Integration Summary
+This application integrates data from:
+- **Customer Data System (PostgreSQL)**  
+- **Product Data System (External CSV Source)**  
+
+These datasets are merged using a unified schema containing **customers, products, orders**,  
+and **order items**, enabling analytical reporting and insights.
+""")
+
 st.write("""
 A demonstration of:
 - Database schema design  
@@ -50,7 +66,7 @@ A demonstration of:
 
 
 # -----------------------------------------------------
-# Tabs Layout (Icons Only in Titles)
+# Tabs Layout
 # -----------------------------------------------------
 tabs = st.tabs([
     "📘 Submission Details",
@@ -87,8 +103,7 @@ with tabs[0]:
         ]
     }
 
-    df_details = pd.DataFrame(details)
-    st.table(df_details)
+    st.table(pd.DataFrame(details))
 
 
 
@@ -101,60 +116,16 @@ with tabs[1]:
     st.write("Schema hosted on DB Docs:")
     st.markdown("[Open Schema on DB Docs](https://dbdocs.io/gabrielndunda/Customer-Product-Data-Integration-System)")
 
-    st.write("Entity Relationship Diagram:")
-
     erd_path = "static/erd_diagram.png"
     if os.path.exists(erd_path):
         st.image(erd_path, caption="ERD Diagram", use_column_width=True)
     else:
         st.warning("Place 'erd_diagram.png' inside the /static folder.")
 
-    st.write("DBML Schema Used:")
-
-    dbml = """
-Table customers {
-  customer_id int [pk]
-  first_name varchar
-  last_name varchar
-  email varchar
-  phone varchar
-  address_line1 varchar
-  address_line2 varchar
-  city varchar
-  country varchar
-  created_at timestamp
-}
-
-Table products {
-  product_id int [pk]
-  product_name varchar
-  price decimal
-  stock_quantity int
-  source_system varchar
-  created_at timestamp
-}
-
-Table orders {
-  order_id int [pk]
-  customer_id int [ref: > customers.customer_id]
-  order_date date
-  total_amount decimal
-}
-
-Table order_items {
-  order_item_id int [pk]
-  order_id int [ref: > orders.order_id]
-  product_id int [ref: > products.product_id]
-  quantity int
-  unit_price decimal
-  subtotal decimal
-}
-"""
-    st.code(dbml, language="text")
 
 
 # -----------------------------------------------------
-# TAB 3 — Customers
+# TAB 3 — Customers Table
 # -----------------------------------------------------
 with tabs[2]:
     st.header("Customers Table")
@@ -162,10 +133,10 @@ with tabs[2]:
     limit = st.slider("Rows to display:", 10, 500, 200)
 
     query = f"SELECT * FROM customers LIMIT {limit};"
-    st.subheader("SQL Query")
     st.code(query)
 
     st.dataframe(run_query(query), use_container_width=True)
+
 
 
 # -----------------------------------------------------
@@ -186,26 +157,50 @@ with tabs[3]:
     ORDER BY price
     LIMIT 300;
     """
-    st.subheader("SQL Query")
     st.code(query)
 
     df = run_query(query, (min_price, max_price))
     st.dataframe(df, use_container_width=True)
 
+    # 🔥 Enhancement Added: Price Distribution
+    st.subheader("Price Distribution for Filtered Products")
+    if not df.empty:
+        chart = alt.Chart(df).mark_bar().encode(
+            x="price:Q",
+            y="count()",
+            tooltip=["price", "count()"]
+        )
+        st.altair_chart(chart, use_container_width=True)
+
+
 
 # -----------------------------------------------------
-# TAB 5 — Products CSV (GitHub)
+# TAB 5 — Products CSV Integration
 # -----------------------------------------------------
 with tabs[4]:
-    st.header("Products CSV (GitHub Source)")
+    st.header("Products CSV (External Source Integration)")
 
     csv_url = "https://raw.githubusercontent.com/MutuaNdunda/csa_802_module3_customer_data_integration_system/refs/heads/main/products_2000.csv"
-    st.write("CSV Source URL:")
     st.code(csv_url)
 
     df_csv = pd.read_csv(csv_url)
     st.write("CSV Preview")
     st.dataframe(df_csv.head(20))
+
+    # 🔥 Enhancement Added: Data Validation
+    st.subheader("CSV Data Validation")
+
+    missing_report = df_csv.isnull().sum().reset_index()
+    missing_report.columns = ["Column", "Missing Values"]
+    st.write("Missing Values Report")
+    st.dataframe(missing_report)
+
+    invalid_rows = df_csv[(df_csv["price"] < 0) | (df_csv["stock_quantity"] < 0)]
+    if not invalid_rows.empty:
+        st.error("Invalid product records found!")
+        st.dataframe(invalid_rows)
+    else:
+        st.success("All CSV records valid.")
 
     df_db = run_query("SELECT * FROM products LIMIT 2000;")
 
@@ -218,6 +213,7 @@ with tabs[4]:
     st.bar_chart(compare_df)
 
 
+
 # -----------------------------------------------------
 # TAB 6 — Orders
 # -----------------------------------------------------
@@ -225,10 +221,10 @@ with tabs[5]:
     st.header("Orders Table")
 
     query = "SELECT * FROM orders LIMIT 200;"
-    st.subheader("SQL Query")
     st.code(query)
 
     st.dataframe(run_query(query), use_container_width=True)
+
 
 
 # -----------------------------------------------------
@@ -238,10 +234,10 @@ with tabs[6]:
     st.header("Order Items Table")
 
     query = "SELECT * FROM order_items LIMIT 200;"
-    st.subheader("SQL Query")
     st.code(query)
 
     st.dataframe(run_query(query), use_container_width=True)
+
 
 
 # -----------------------------------------------------
@@ -249,6 +245,28 @@ with tabs[6]:
 # -----------------------------------------------------
 with tabs[7]:
     st.header("Analytics & Insights")
+
+    # 🔥 Enhancement Added: Integrated Customer–Product View
+    st.subheader("Integrated Customer–Product Order View")
+
+    query_join = """
+    SELECT 
+        o.order_id,
+        o.order_date,
+        CONCAT(c.first_name, ' ', c.last_name) AS customer_name,
+        p.product_name,
+        oi.quantity,
+        oi.unit_price,
+        oi.subtotal
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.customer_id
+    JOIN order_items oi ON o.order_id = oi.order_id
+    JOIN products p ON oi.product_id = p.product_id
+    ORDER BY o.order_date DESC
+    LIMIT 200;
+    """
+    st.dataframe(run_query(query_join), use_container_width=True)
+
 
     # ------------------------------  
     # Top Customers  
@@ -269,6 +287,25 @@ with tabs[7]:
     df_cust = run_query(q1)
     st.bar_chart(df_cust.set_index("customer_name")["total_spent"])
 
+
+    # 🔥 Enhancement Added: Customers exceeding threshold
+    st.subheader("Customers With Orders Exceeding Threshold")
+
+    threshold = st.number_input("Set Order Value Threshold", value=5000.0)
+    query_threshold = """
+    SELECT 
+        CONCAT(c.first_name, ' ', c.last_name) AS customer_name,
+        SUM(o.total_amount) AS total_spent
+    FROM customers c
+    JOIN orders o ON c.customer_id = o.customer_id
+    GROUP BY customer_name
+    HAVING SUM(o.total_amount) > %s
+    ORDER BY total_spent DESC;
+    """
+
+    st.dataframe(run_query(query_threshold, (threshold,)))
+
+
     # ------------------------------  
     # Best-Selling Products  
     # ------------------------------
@@ -285,11 +322,11 @@ with tabs[7]:
     LIMIT 10;
     """
 
-    df_prod = run_query(q2)
-    st.bar_chart(df_prod.set_index("product_name")["units_sold"])
+    st.bar_chart(run_query(q2).set_index("product_name")["units_sold"])
+
 
     # ------------------------------  
-    # Daily Orders Trend  
+    # Orders Per Day  
     # ------------------------------
     st.subheader("Orders Per Day")
 
@@ -305,28 +342,25 @@ with tabs[7]:
     df_orders = run_query(q3)
     st.line_chart(df_orders.set_index("order_date")["num_orders"])
 
+
     # ------------------------------  
-    # Revenue Distribution Pie Chart  
+    # Revenue Report  
     # ------------------------------
-    st.subheader("Revenue Distribution (Top 10 Products)")
+    st.subheader("Revenue & Orders Per Product")
 
     q4 = """
     SELECT 
         p.product_name,
+        COUNT(oi.order_item_id) AS total_orders,
+        SUM(oi.quantity) AS units_sold,
         SUM(oi.subtotal) AS revenue
     FROM products p
     JOIN order_items oi ON oi.product_id = p.product_id
     GROUP BY p.product_name
-    ORDER BY revenue DESC
-    LIMIT 10;
+    ORDER BY revenue DESC;
     """
 
     df_rev = run_query(q4)
+    st.dataframe(df_rev)
 
-    pie = alt.Chart(df_rev).mark_arc().encode(
-        theta="revenue",
-        color="product_name",
-        tooltip=["product_name", "revenue"]
-    )
-
-    st.altair_chart(pie, use_container_width=True)
+    st.bar_chart(df_rev.set_index("product_name")["revenue"])
